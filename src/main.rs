@@ -1,12 +1,18 @@
-use std::{fs, path::PathBuf, thread, time::Duration};
+use std::{
+    fs,
+    path::PathBuf,
+    thread,
+    time::{Duration, Instant},
+};
 
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use serde_yaml::to_string;
 use swayipc::{Connection, Fallible};
 
+const MAX_WAIT_DURATION: Duration = Duration::from_secs(5);
+
 // TODO: make a diff and kill not wanted windows + spawn missing ones?
-// TODO: watch get_tree to check if an app is started (with a watchdog) instead of hardcoding a sleep
 
 /// Save your sway tree, and reload it. Provide a name if you wish!
 #[derive(Parser, Debug)]
@@ -101,8 +107,8 @@ impl NodeLayout {
         }
     }
 
-    fn is_unknown(&self) -> bool {
-        matches!(self, NodeLayout::Unknown)
+    fn is_none(&self) -> bool {
+        matches!(self, NodeLayout::Unknown | NodeLayout::None)
     }
 }
 
@@ -124,7 +130,7 @@ struct Node {
     desktop_file: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     exec: Option<String>,
-    #[serde(skip_serializing_if = "NodeLayout::is_unknown", default)]
+    #[serde(skip_serializing_if = "NodeLayout::is_none", default)]
     layout: NodeLayout,
 }
 
@@ -317,10 +323,27 @@ fn spawn_recursive(connection: &mut Connection, node: &Node, dry_run: bool) {
         if let Some(cmd) = cmd {
             println!("\t{:?}", cmd);
             if !dry_run {
+                let before = if let Some(app_id) = &node.app_id {
+                    count_app_ids(connection, app_id).expect("Failed to count app ids")
+                } else {
+                    0
+                };
                 connection
                     .run_command(cmd)
                     .expect(stringify!("Failed to spawn app {}", node.id));
-                thread::sleep(Duration::from_secs(1));
+                if let Some(app_id) = &node.app_id {
+                    let now = Instant::now();
+                    while let Ok(after) = count_app_ids(connection, app_id) {
+                        if after > before {
+                            break;
+                        }
+                        if now.elapsed() > MAX_WAIT_DURATION {
+                            eprintln!("Timeout while waiting for app to spawn");
+                            break;
+                        }
+                        thread::sleep(Duration::from_millis(100));
+                    }
+                }
             }
         }
     }
@@ -366,4 +389,24 @@ fn extract_cmdline(pid: &i32) -> Result<String, std::io::Error> {
         .join(" ");
 
     Ok(joined)
+}
+
+fn count_app_ids(connection: &mut Connection, app_id: &str) -> Fallible<usize> {
+    let mut count = 0;
+    for child in connection.get_tree()?.nodes.iter() {
+        count += count_app_ids_recurse(app_id, child);
+    }
+    Ok(count)
+}
+
+fn count_app_ids_recurse(app_id: &str, node: &swayipc::Node) -> usize {
+    let mut count = if node.app_id == Some(app_id.to_string()) {
+        1
+    } else {
+        0
+    };
+    for child in node.nodes.iter() {
+        count += count_app_ids_recurse(app_id, child);
+    }
+    count
 }
