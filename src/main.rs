@@ -12,6 +12,10 @@ use swayipc::{Connection, Error, Fallible};
 
 const MAX_WAIT_DURATION: Duration = Duration::from_secs(5);
 
+fn default_timeout() -> Option<Duration> {
+    Some(MAX_WAIT_DURATION)
+}
+
 // TODO: make a diff and kill not wanted windows + spawn missing ones?
 
 /// Save your sway tree, and reload it. Provide a name if you wish!
@@ -134,6 +138,12 @@ struct Node {
     layout: NodeLayout,
     #[serde(skip_serializing_if = "Option::is_none")]
     retry: Option<u8>,
+    #[serde(
+        with = "humantime_serde",
+        skip_serializing_if = "Option::is_none",
+        default = "default_timeout"
+    )]
+    timeout: Option<Duration>,
 }
 
 fn main() -> Fallible<()> {
@@ -330,11 +340,11 @@ fn spawn_recursive(connection: &mut Connection, node: &Node, dry_run: bool) {
         if let Some(cmd) = cmd {
             println!("\t{:?}", cmd);
             if !dry_run {
-                for i  in 0..node.retry.unwrap_or(1) {
+                for i in 0..node.retry.unwrap_or(1) {
                     if i > 0 {
                         println!("\tRetrying...");
                     }
-                    match spawn_and_wait(connection, &cmd, &node.app_id) {
+                    match spawn_and_wait(connection, &cmd, &node.app_id, &node.timeout) {
                         Ok(_) => break,
                         Err(e) => {
                             eprintln!("{}", e);
@@ -408,7 +418,12 @@ fn count_app_ids_recurse(app_id: &str, node: &swayipc::Node) -> usize {
     count
 }
 
-fn spawn_and_wait(connection: &mut Connection, cmd: &str, app_id: &Option<String>) -> Fallible<()> {
+fn spawn_and_wait(
+    connection: &mut Connection,
+    cmd: &str,
+    app_id: &Option<String>,
+    timeout: &Option<Duration>,
+) -> Fallible<()> {
     let before = if let Some(app_id) = &app_id {
         count_app_ids(connection, app_id).expect("Failed to count app ids")
     } else {
@@ -423,12 +438,13 @@ fn spawn_and_wait(connection: &mut Connection, cmd: &str, app_id: &Option<String
             if after > before {
                 break;
             }
-            if now.elapsed() > MAX_WAIT_DURATION {
+            if now.elapsed() > timeout.unwrap_or(MAX_WAIT_DURATION) {
                 return Err(Error::Io(std::io::Error::new(
                     std::io::ErrorKind::TimedOut,
                     "Timed out waiting for app to spawn",
                 )));
             }
+            eprintln!("sleep 100ms");
             thread::sleep(Duration::from_millis(100));
         }
     }
