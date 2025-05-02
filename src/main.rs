@@ -33,7 +33,12 @@ enum Mode {
     /// Save your current sway tree
     Save,
     /// Load a sway tree
-    Load,
+    Load {
+        /// Specify the workspace to load.
+        /// Other workspaces app will not be killed, and only this workspace apps will be loaded from config file.
+        #[arg(long)]
+        workspace: Option<String>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
@@ -133,7 +138,12 @@ fn main() -> Fallible<()> {
 
     match options.mode {
         Mode::Save => save_tree(config_file_path, options.dry_run),
-        Mode::Load => load_tree(config_file_path, options.dry_run, options.no_kill),
+        Mode::Load { workspace } => load_tree(
+            config_file_path,
+            options.dry_run,
+            options.no_kill,
+            workspace,
+        ),
     }
 }
 
@@ -173,7 +183,12 @@ fn save_tree(config_file_path: PathBuf, dry_run: bool) -> Fallible<()> {
     Ok(())
 }
 
-fn load_tree(config_file_path: PathBuf, dry_run: bool, no_kill: bool) -> Fallible<()> {
+fn load_tree(
+    config_file_path: PathBuf,
+    dry_run: bool,
+    no_kill: bool,
+    workspace: Option<String>,
+) -> Fallible<()> {
     eprintln!("Loading tree from {:?}", config_file_path);
 
     // loading tree from file
@@ -194,6 +209,9 @@ fn load_tree(config_file_path: PathBuf, dry_run: bool, no_kill: bool) -> Fallibl
             if node.name.as_ref().unwrap() == "__i3_scratch" {
                 continue;
             }
+            if workspace.is_some() && node.name != workspace {
+                continue;
+            }
             kill_recursive(&mut connection, node, dry_run, no_kill);
         }
     }
@@ -205,6 +223,9 @@ fn load_tree(config_file_path: PathBuf, dry_run: bool, no_kill: bool) -> Fallibl
                 continue;
             };
             if node.name.as_ref().unwrap() == "__i3_scratch" {
+                continue;
+            }
+            if workspace.is_some() && node.name != workspace {
                 continue;
             }
             spawn_recursive(&mut connection, node, dry_run);
@@ -249,10 +270,6 @@ fn parse_children(node: &swayipc::Node) -> Node {
 }
 
 fn kill_recursive(connection: &mut Connection, node: &swayipc::Node, dry_run: bool, no_kill: bool) {
-    if node.app_id == Some("code-oss".to_owned()) {
-        // FIXME:
-        return;
-    }
     if node.node_type == swayipc::NodeType::Con || node.node_type == swayipc::NodeType::FloatingCon
     {
         let cmd = format!("[con_id={}] kill", node.id);
