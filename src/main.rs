@@ -222,6 +222,11 @@ fn load_tree(
         }
     }
 
+    // TODO: remove this once kill_recursive is fixed
+    if !dry_run && !no_kill {
+        thread::sleep(Duration::from_millis(100));
+    }
+
     // spawning windows
     for node in tree.iter() {
         if node.node_type == NodeType::Workspace {
@@ -278,10 +283,10 @@ fn parse_children(node: &swayipc::Node) -> Node {
 fn kill_recursive(connection: &mut Connection, node: &swayipc::Node, dry_run: bool, no_kill: bool) {
     if node.node_type == swayipc::NodeType::Con || node.node_type == swayipc::NodeType::FloatingCon
     {
+        // TODO: count before/after to check if the app is really killed
         let cmd = format!("[con_id={}] kill", node.id);
-        if dry_run || no_kill {
-            println!("\t{:?} => {:?}", node.app_id, cmd);
-        } else {
+        println!("\t{:?} => {:?}", node.app_id, cmd);
+        if !dry_run && !no_kill {
             connection
                 .run_command(cmd)
                 .expect(stringify!("Failed to kill node with id {}", node.id));
