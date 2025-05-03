@@ -1,4 +1,5 @@
 mod args;
+mod config;
 mod consts;
 mod models;
 
@@ -16,20 +17,29 @@ use models::*;
 use serde_yaml::to_string;
 use swayipc::{Connection, Error, Fallible};
 
+// TODO: Resize support
 // TODO: make a diff and kill not wanted windows + spawn missing ones?
 
 fn main() -> Fallible<()> {
     let options = Args::parse();
 
     let xdg_dirs = xdg::BaseDirectories::with_prefix("swaytreesave").unwrap();
-    let config_file_path = xdg_dirs
-        .place_config_file((options.name.unwrap_or("default".to_owned())) + ".yaml")
+
+    let config_file_path: PathBuf = xdg_dirs
+        .place_config_file("config.yaml")
         .expect("Failed to create config file");
+    config::Config::touch_if_not_exists(&config_file_path).expect("Failed to create config file");
+    let config = config::Config::load(&config_file_path).expect("Failed to load config file");
+
+    let tree_file_path: PathBuf = xdg_dirs
+        .place_config_file((options.name.unwrap_or("default".to_owned())) + ".yaml")
+        .expect("Failed to create tree file");
 
     match options.mode {
-        Mode::Save => save_tree(config_file_path, options.dry_run),
+        Mode::Save => save_tree(tree_file_path, options.dry_run),
         Mode::Load { workspace } => load_tree(
-            config_file_path,
+            &config,
+            tree_file_path,
             options.dry_run,
             options.no_kill,
             workspace,
@@ -74,6 +84,7 @@ fn save_tree(config_file_path: PathBuf, dry_run: bool) -> Fallible<()> {
 }
 
 fn load_tree(
+    config: &config::Config,
     config_file_path: PathBuf,
     dry_run: bool,
     no_kill: bool,
@@ -123,7 +134,7 @@ fn load_tree(
             if workspace.is_some() && node.name != workspace {
                 continue;
             }
-            spawn_recursive(&mut connection, node, dry_run);
+            spawn_recursive(&mut connection, node, &config.desktop_exec, dry_run);
         }
     }
 
@@ -182,7 +193,7 @@ fn kill_recursive(connection: &mut Connection, node: &swayipc::Node, dry_run: bo
     }
 }
 
-fn spawn_recursive(connection: &mut Connection, node: &Node, dry_run: bool) {
+fn spawn_recursive(connection: &mut Connection, node: &Node, desktop_exec: &str, dry_run: bool) {
     if node.node_type == NodeType::Workspace {
         if let Some(name) = &node.name {
             let cmd = format!("workspace {}", name);
@@ -195,12 +206,16 @@ fn spawn_recursive(connection: &mut Connection, node: &Node, dry_run: bool) {
         }
     }
 
-    if node.node_type == NodeType::Con
-        || node.node_type == NodeType::FloatingCon
-        || node.node_type == NodeType::Unknown
-    {
-        let cmd = if let Some(desktop_file) = &node.desktop_file {
-            Some(format!("exec {}", desktop_file))
+    if matches!(
+        node.node_type,
+        NodeType::Con | NodeType::FloatingCon | NodeType::Unknown
+    ) {
+        let cmd = if let Some(desktop_file) = &node.desktop_entry {
+            Some(format!(
+                "exec {} \"{}\"",
+                desktop_exec,
+                desktop_file.replace("\"", "\\\"")
+            ))
         } else if let Some(exec) = &node.exec {
             Some(format!("exec \"{}\"", exec.replace("\"", "\\\"")))
         } else {
@@ -228,7 +243,7 @@ fn spawn_recursive(connection: &mut Connection, node: &Node, dry_run: bool) {
     }
 
     for (index, child) in node.nodes.iter().enumerate() {
-        spawn_recursive(connection, child, dry_run);
+        spawn_recursive(connection, child, desktop_exec, dry_run);
         if index == 0 {
             if node.layout == NodeLayout::SplitH {
                 let cmd = "split h".to_string();
