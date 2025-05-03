@@ -1,3 +1,7 @@
+mod args;
+mod consts;
+mod models;
+
 use std::{
     fs,
     path::PathBuf,
@@ -5,146 +9,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-use clap::{Parser, Subcommand};
-use serde::{Deserialize, Serialize};
+use args::{Args, Mode};
+use clap::Parser;
+use consts::MAX_WAIT_DURATION;
+use models::*;
 use serde_yaml::to_string;
 use swayipc::{Connection, Error, Fallible};
 
-const MAX_WAIT_DURATION: Duration = Duration::from_secs(5);
-
-fn default_timeout() -> Option<Duration> {
-    Some(MAX_WAIT_DURATION)
-}
-
 // TODO: make a diff and kill not wanted windows + spawn missing ones?
-
-/// Save your sway tree, and reload it. Provide a name if you wish!
-#[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
-struct Args {
-    #[command(subcommand)]
-    mode: Mode,
-
-    /// Name of your tree
-    #[arg(long)]
-    name: Option<String>,
-
-    /// Dry run
-    #[arg(long, default_value_t = false)]
-    dry_run: bool,
-
-    /// No kill
-    #[arg(long, default_value_t = false)]
-    no_kill: bool,
-}
-
-#[derive(Subcommand, Debug, Clone)]
-enum Mode {
-    /// Save your current sway tree
-    Save,
-    /// Load a sway tree
-    Load {
-        /// Specify the workspace to load.
-        /// Other workspaces app will not be killed, and only this workspace apps will be loaded from config file.
-        #[arg(long)]
-        workspace: Option<String>,
-    },
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-#[derive(Default)]
-enum NodeType {
-    Root,
-    Output,
-    Workspace,
-    Con,
-    FloatingCon,
-    Dockarea, // i3-specific
-    #[default]
-    Unknown = 1000,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-#[derive(Default)]
-pub enum NodeLayout {
-    SplitH,
-    SplitV,
-    Stacked,
-    Tabbed,
-    Output,
-    Dockarea, // i3-specific
-    None,
-    #[default]
-    Unknown = 1000,
-}
-
-impl NodeType {
-    fn from_sway(node_type: swayipc::NodeType) -> Self {
-        match node_type {
-            swayipc::NodeType::Root => NodeType::Root,
-            swayipc::NodeType::Output => NodeType::Output,
-            swayipc::NodeType::Workspace => NodeType::Workspace,
-            swayipc::NodeType::Con => NodeType::Con,
-            swayipc::NodeType::FloatingCon => NodeType::FloatingCon,
-            swayipc::NodeType::Dockarea => NodeType::Dockarea,
-            _ => NodeType::Unknown,
-        }
-    }
-
-    fn is_window(&self) -> bool {
-        matches!(self, NodeType::Con | NodeType::FloatingCon)
-    }
-}
-
-impl NodeLayout {
-    fn from_sway(node_layout: swayipc::NodeLayout) -> Self {
-        match node_layout {
-            swayipc::NodeLayout::SplitH => NodeLayout::SplitH,
-            swayipc::NodeLayout::SplitV => NodeLayout::SplitV,
-            swayipc::NodeLayout::Stacked => NodeLayout::Stacked,
-            swayipc::NodeLayout::Tabbed => NodeLayout::Tabbed,
-            swayipc::NodeLayout::Output => NodeLayout::Output,
-            swayipc::NodeLayout::Dockarea => NodeLayout::Dockarea,
-            _ => NodeLayout::Unknown,
-        }
-    }
-
-    fn is_none(&self) -> bool {
-        matches!(self, NodeLayout::Unknown | NodeLayout::None)
-    }
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
-struct Node {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    app_id: Option<String>,
-    #[serde(rename = "type", skip_serializing_if = "NodeType::is_window", default)]
-    node_type: NodeType,
-    #[serde(skip_serializing_if = "Vec::is_empty", default)]
-    nodes: Vec<Node>,
-    #[serde(skip_serializing_if = "skip_if_none_or_zero")]
-    fullscreen_mode: Option<u8>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    percent: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    desktop_file: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    exec: Option<String>,
-    #[serde(skip_serializing_if = "NodeLayout::is_none", default)]
-    layout: NodeLayout,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    retry: Option<u8>,
-    #[serde(
-        with = "humantime_serde",
-        skip_serializing_if = "Option::is_none",
-        default = "default_timeout"
-    )]
-    timeout: Option<Duration>,
-}
 
 fn main() -> Fallible<()> {
     let options = Args::parse();
@@ -378,10 +250,6 @@ fn spawn_recursive(connection: &mut Connection, node: &Node, dry_run: bool) {
             }
         }
     }
-}
-
-fn skip_if_none_or_zero(opt: &Option<u8>) -> bool {
-    matches!(opt, None | Some(0))
 }
 
 fn extract_cmdline(pid: &i32) -> Result<String, std::io::Error> {
