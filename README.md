@@ -1,6 +1,6 @@
 # swaytreesave
 
-> CLI to save and load your sway tree 
+> CLI to save and load your sway tree
 
 ## Features
 
@@ -26,9 +26,8 @@ You can find a custom [template here.](https://github.com/fabienjuif/void-packag
 
 ## Usage
 
-### Daemon
-
 **swaytreesave --help**
+
 ```bash
 Usage: swaytreesave [OPTIONS] <COMMAND>
 
@@ -46,6 +45,7 @@ Options:
 ```
 
 **swawytreesave load --help**
+
 ```bash
 Load a sway tree
 
@@ -56,15 +56,16 @@ Options:
   -h, --help                   Print help
 ```
 
-
-#### Example
+### Example
 
 Saves the current tree to `$HOME/.config/swaytreesave/default.yaml`:
+
 ```bash
 swawytreesave save
 ```
 
 Loads the default tree back:
+
 ```bash
 swawytreesave load
 ```
