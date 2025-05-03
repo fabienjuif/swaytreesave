@@ -69,3 +69,20 @@ Loads the default tree back:
 ```bash
 swawytreesave load
 ```
+
+### Sway config example
+
+```bash
+# trees loader
+# needs https://github.com/fabienjuif/swaytreesave
+set $treeload_mode 'load tree (d|p:default, w:work)'
+mode $treeload_mode {
+    bindsym d exec swaymsg 'mode "default"' && swaytreesave load
+    bindsym p exec swaymsg 'mode "default"' && swaytreesave load
+    bindsym w exec swaymsg 'mode "default"' && swaytreesave --name work load
+
+    bindsym Return mode "default"
+    bindsym Escape mode "default"
+}
+bindsym $mod+Shift+t mode $treeload_mode
+```
