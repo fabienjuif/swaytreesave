@@ -1,14 +1,14 @@
 # swaytreesave
 
-> CLI to save and load your sway tree
+> `swaytreesave` is a command-line tool that enables users of the Sway window manager to save and restore their window layouts effortlessly. Whether you're switching tasks or rebooting your system, `swaytreesave` ensures your workspace remains consistent and organized.
 
 ## Features
 
-- Save and load your sway tree
+- Save and load your sway tree (layout)
 - Exec customisation
 - Timeout customisation per item
 - Retry customisation per item
-- Save and load multiple tree giving a name
+- Save and load multiple trees/layouts giving a name
 - Load specific workspace of specific tree
 
 ## Installation
