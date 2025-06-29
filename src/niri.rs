@@ -1,4 +1,8 @@
-use std::vec;
+use std::{
+    thread,
+    time::{Duration, Instant},
+    vec,
+};
 
 // TODO: I do not think Niri expose the columns, so this is not possible to see how windows are arranged
 // TODO: same for columns widths then
@@ -7,6 +11,7 @@ use tracing::{debug, info, warn};
 
 use crate::{
     config::Config,
+    consts::MAX_WAIT_DURATION,
     models::{Node, NodeLayout, NodeType},
 };
 
@@ -62,7 +67,7 @@ impl Niri {
         let reply = self
             .socket
             .send(niri_ipc::Request::Windows)
-            .context("on socket.send()")?
+            .context("on socket.send(windows)")?
             .map_err(|e| anyhow!("on decoding Niri answer: {:?}", e))?;
 
         let niri_ipc::Response::Windows(windows) = reply else {
@@ -105,7 +110,26 @@ impl Niri {
 
     /// Clears all current workspaces and closes all current windows.
     pub fn clear(&mut self) -> Result<()> {
-        warn!("clearing all workspaces and windows -not supported yet-");
+        // transition
+        // we should make it configurable, and not for now we are cheating by recalling the screen transition with 200ms delay to override this one if we finish early
+        let _ = self
+            .send(niri_ipc::Request::Action(
+                niri_ipc::Action::DoScreenTransition {
+                    delay_ms: Some(10_000),
+                },
+            ))
+            .context("on Action::Transition(Clear)")?;
+
+        let windows = self.fetch_windows().context("on fetch_windows()")?;
+
+        for window in windows {
+            debug!("closing window: {window:?}");
+            let _ = self
+                .send(niri_ipc::Request::Action(niri_ipc::Action::CloseWindow {
+                    id: Some(window.id),
+                }))
+                .context(format!("on CloseWindow for id: {}", window.id))?;
+        }
         Ok(())
     }
 
@@ -175,19 +199,36 @@ impl Niri {
                 }
             }
         }
-        // go back to the first workspace
-        debug!("going back to focusing the first workspace");
+
+        // going back to the first workspace
+        let first_workspace = niri_ipc::WorkspaceReferenceArg::Index(1);
+        debug!("focusing first workspace: {:?}", first_workspace);
         let _ = self.send(niri_ipc::Request::Action(
             niri_ipc::Action::FocusWorkspace {
-                reference: niri_ipc::WorkspaceReferenceArg::Index(1),
+                reference: first_workspace,
             },
         ))?;
+
+        let _ = self
+            .send(niri_ipc::Request::Action(
+                niri_ipc::Action::DoScreenTransition {
+                    delay_ms: Some(200),
+                },
+            ))
+            .context("on Action::Transition(Clear)")?;
+
         Ok(())
     }
 
     /// Spawns a command and waits for it to finish.
     /// TODO: wait is not implemented yet, so it just spawns the command.
     fn spawn_and_wait(&mut self, node: &Node) -> Result<()> {
+        let app_id = node
+            .app_id
+            .as_deref()
+            .context("app_id is required to spawn an application")?;
+        let before_count = self.count_app_ids(app_id).context("on count_app_ids()")?;
+
         let cmd = if let Some(desktop_file) = &node.desktop_entry {
             debug!("\tspawning from desktop entry: {desktop_file}");
             Some(format!(
@@ -199,8 +240,8 @@ impl Niri {
             debug!("\tspawning from exec: {exec}");
             Some(exec.replace("\"", "\\\""))
         } else {
-            debug!("\tspawning from app_id: {:?}", node.app_id);
-            node.app_id.clone()
+            debug!("\tspawning from app_id: {:?}", app_id);
+            app_id.to_string().into()
         };
 
         let Some(cmd) = cmd else {
@@ -212,7 +253,53 @@ impl Niri {
                 command: vec!["sh".to_string(), "-c".to_string(), cmd.to_string()],
             }))
             .context(format!("on spawn action with command: {cmd}"))?;
+
+        if self.dry_run {
+            info!("dry run mode, not waiting for app to spawn: {app_id}");
+            return Ok(());
+        }
+
+        let now = Instant::now();
+        while let Ok(after_count) = self.count_app_ids(app_id).context("on count_app_ids()") {
+            if after_count > before_count {
+                break;
+            }
+            if now.elapsed() > node.timeout.unwrap_or(MAX_WAIT_DURATION) {
+                bail!("Timed out waiting for app with id {} to spawn", app_id);
+            }
+            info!(
+                "waiting 100ms for app with id {} to spawn, current count: {after_count}",
+                app_id
+            );
+            thread::sleep(Duration::from_millis(100));
+        }
         Ok(())
+    }
+
+    fn count_app_ids(&mut self, app_id: &str) -> Result<usize> {
+        let mut count = 0;
+        let windows = self.fetch_windows().context("on fetch_windows()")?;
+
+        for window in windows {
+            if let Some(id) = &window.app_id {
+                if id == app_id {
+                    count += 1;
+                }
+            }
+        }
+
+        Ok(count)
+    }
+
+    fn fetch_windows(&mut self) -> Result<Vec<niri_ipc::Window>> {
+        let response = self
+            .send(niri_ipc::Request::Windows)
+            .context("on self.send(windows)")?;
+
+        match response {
+            niri_ipc::Response::Windows(windows) => Ok(windows),
+            _ => bail!("unexpected response type from Niri, expected Windows"),
+        }
     }
 
     fn send(&mut self, request: niri_ipc::Request) -> Result<niri_ipc::Response> {

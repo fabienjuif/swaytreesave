@@ -266,7 +266,7 @@ fn spawn_and_wait(
         .run_command(cmd)
         .context(format!("on run_command:{cmd:?}"))?;
     if let Some(app_id) = &app_id {
-        let now = Instant::now();
+        let now: Instant = Instant::now();
         while let Ok(after) = count_app_ids(connection, app_id) {
             if after > before {
                 break;

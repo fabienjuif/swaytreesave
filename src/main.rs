@@ -17,7 +17,9 @@ use xdg::BaseDirectories;
 
 fn main() {
     if let Err(e) = run() {
-        error!("{e}");
+        for cause in e.chain() {
+            error!(?cause, "An error occurred while running the application");
+        }
         std::process::exit(1);
     }
 }
