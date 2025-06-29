@@ -120,12 +120,12 @@ fn parse_children(node: &swayipc::Node) -> Node {
     };
     let mut parent = Node {
         name,
-        node_type: NodeType::from_sway(node.node_type),
+        node_type: NodeType::from(node.node_type),
         app_id: node.app_id.clone(),
         nodes: vec![],
         fullscreen_mode: node.fullscreen_mode,
         percent: node.percent,
-        layout: NodeLayout::from_sway(node.layout),
+        layout: NodeLayout::from(node.layout),
         ..Default::default()
     };
 
@@ -299,4 +299,33 @@ fn count_app_ids_recurse(app_id: &str, node: &swayipc::Node) -> usize {
         count += count_app_ids_recurse(app_id, child);
     }
     count
+}
+
+impl From<swayipc::NodeType> for NodeType {
+    fn from(node_type: swayipc::NodeType) -> Self {
+        match node_type {
+            swayipc::NodeType::Root => NodeType::Root,
+            swayipc::NodeType::Output => NodeType::Output,
+            swayipc::NodeType::Workspace => NodeType::Workspace,
+            swayipc::NodeType::Con => NodeType::Con,
+            swayipc::NodeType::FloatingCon => NodeType::FloatingCon,
+            swayipc::NodeType::Dockarea => NodeType::Dockarea,
+            _ => NodeType::Unknown,
+        }
+    }
+}
+
+impl From<swayipc::NodeLayout> for NodeLayout {
+    fn from(node_layout: swayipc::NodeLayout) -> Self {
+        match node_layout {
+            swayipc::NodeLayout::SplitH => NodeLayout::SplitH,
+            swayipc::NodeLayout::SplitV => NodeLayout::SplitV,
+            swayipc::NodeLayout::Stacked => NodeLayout::Stacked,
+            swayipc::NodeLayout::Tabbed => NodeLayout::Tabbed,
+            swayipc::NodeLayout::Output => NodeLayout::Output,
+            swayipc::NodeLayout::Dockarea => NodeLayout::Dockarea,
+            swayipc::NodeLayout::None => NodeLayout::None,
+            _ => NodeLayout::Unknown,
+        }
+    }
 }

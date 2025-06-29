@@ -34,36 +34,12 @@ pub enum NodeLayout {
 }
 
 impl NodeType {
-    pub fn from_sway(node_type: swayipc::NodeType) -> Self {
-        match node_type {
-            swayipc::NodeType::Root => NodeType::Root,
-            swayipc::NodeType::Output => NodeType::Output,
-            swayipc::NodeType::Workspace => NodeType::Workspace,
-            swayipc::NodeType::Con => NodeType::Con,
-            swayipc::NodeType::FloatingCon => NodeType::FloatingCon,
-            swayipc::NodeType::Dockarea => NodeType::Dockarea,
-            _ => NodeType::Unknown,
-        }
-    }
-
     fn is_window(&self) -> bool {
         matches!(self, NodeType::Con | NodeType::FloatingCon)
     }
 }
 
 impl NodeLayout {
-    pub fn from_sway(node_layout: swayipc::NodeLayout) -> Self {
-        match node_layout {
-            swayipc::NodeLayout::SplitH => NodeLayout::SplitH,
-            swayipc::NodeLayout::SplitV => NodeLayout::SplitV,
-            swayipc::NodeLayout::Stacked => NodeLayout::Stacked,
-            swayipc::NodeLayout::Tabbed => NodeLayout::Tabbed,
-            swayipc::NodeLayout::Output => NodeLayout::Output,
-            swayipc::NodeLayout::Dockarea => NodeLayout::Dockarea,
-            _ => NodeLayout::Unknown,
-        }
-    }
-
     fn is_none(&self) -> bool {
         matches!(self, NodeLayout::Unknown | NodeLayout::None)
     }
