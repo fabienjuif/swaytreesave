@@ -1,58 +1,95 @@
-use anyhow::Result;
+use std::vec;
 
-#[allow(dead_code)]
-pub fn test_niri() -> Result<()> {
-    let mut n = Niri::new()?;
-    n.print_workspaces()?;
-    n.print_windows()?;
+// TODO: I do not think Niri expose the columns, so this is not possible to see how windows are arranged
+// TODO: same for columns widths then
+use anyhow::{Context, Result, anyhow, bail};
+use tracing::debug;
 
-    Ok(())
-}
+use crate::models::{Node, NodeLayout, NodeType};
 
-struct Niri {
+pub struct Niri {
     socket: niri_ipc::socket::Socket,
 }
 
 impl Niri {
     pub fn new() -> Result<Self> {
-        let socket = niri_ipc::socket::Socket::connect()
-            .map_err(|e| anyhow::anyhow!("on Socket::connect(): {:?}", e))?;
+        let socket = niri_ipc::socket::Socket::connect().context("on Socket::connect()")?;
         Ok(Self { socket })
     }
 
-    pub fn print_windows(&mut self) -> Result<()> {
-        let reply = self
-            .socket
-            .send(niri_ipc::Request::Windows)
-            .map_err(|e| anyhow::anyhow!("on socket.send(): {:?}", e))?
-            .map_err(|e| anyhow::anyhow!("on decoding Niri answer: {:?}", e))?;
-
-        let niri_ipc::Response::Windows(windows) = reply else {
-            return Err(anyhow::anyhow!("Unexpected response type from Niri"));
-        };
-
-        for window in &windows {
-            println!("{window:?}");
-        }
-
-        Ok(())
-    }
-
-    pub fn print_workspaces(&mut self) -> Result<()> {
+    pub fn get_tree(&mut self) -> Result<Vec<Node>> {
+        // get workspaces
         let reply = self
             .socket
             .send(niri_ipc::Request::Workspaces)
-            .map_err(|e| anyhow::anyhow!("on socket.send(): {:?}", e))?
-            .map_err(|e| anyhow::anyhow!("on decoding Niri answer: {:?}", e))?;
+            .context("on socket.send()")?
+            .map_err(|e: String| anyhow!("on decoding Niri answer: {:?}", e))?;
 
         let niri_ipc::Response::Workspaces(workspaces) = reply else {
-            return Err(anyhow::anyhow!("Unexpected response type from Niri"));
+            return Err(anyhow!("Unexpected response type from Niri"));
         };
+        let mut workspaces = workspaces;
+        workspaces.sort_by_key(|w| w.idx);
 
-        for workspace in &workspaces {
-            println!("{workspace:?}");
+        let mut nodes = Vec::new();
+        for (idx, workspace) in workspaces.into_iter().enumerate() {
+            debug!("workspace: {workspace:?}");
+            let node = Node {
+                name: Some(workspace.name.unwrap_or(idx.to_string())),
+                node_type: crate::models::NodeType::Workspace,
+                // niri does not provide layout, so we default to SplitH
+                nodes: vec![Node {
+                    node_type: NodeType::Con,
+                    layout: NodeLayout::SplitH,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            };
+            nodes.push(node);
         }
 
-        Ok(())
+        // get windows and map them to workspaces
+        let reply = self
+            .socket
+            .send(niri_ipc::Request::Windows)
+            .context("on socket.send()")?
+            .map_err(|e| anyhow!("on decoding Niri answer: {:?}", e))?;
+
+        let niri_ipc::Response::Windows(windows) = reply else {
+            return Err(anyhow!("unexpected response type from Niri"));
+        };
+
+        for window in windows {
+            debug!("window: {window:?}");
+            let Some(workspace_id) = window.workspace_id else {
+                continue;
+            };
+            let workspace_idx = (workspace_id - 1) as usize;
+
+            if workspace_idx >= nodes.len() {
+                bail!(
+                    "workspace index {} out of bounds for nodes length {}",
+                    workspace_idx,
+                    nodes.len()
+                );
+            }
+
+            let node = Node {
+                node_type: NodeType::Con,
+                app_id: window.app_id,
+                ..Default::default()
+            };
+
+            // niri does not provide layout, so we default to the first found Con(tainer)
+            if nodes[workspace_idx].nodes.is_empty() {
+                bail!(
+                    "workspace {} has no nodes, cannot determine layout",
+                    workspace_idx
+                );
+            }
+            nodes[workspace_idx].nodes[0].nodes.push(node);
+        }
+
+        Ok(nodes)
     }
 }

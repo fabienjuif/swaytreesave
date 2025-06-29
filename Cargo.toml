@@ -12,3 +12,6 @@ xdg = "2.5.2"
 humantime-serde = "1.1.1"
 niri-ipc = "=25.5.1"
 anyhow = "1.0.98"
+tracing = "0.1.41"
+tracing-appender = "0.2.3"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }

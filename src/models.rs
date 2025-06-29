@@ -1,8 +1,64 @@
-use std::time::Duration;
+use std::{fmt::Display, fs, str::FromStr, time::Duration};
 
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use serde_yaml::to_string;
+use xdg::BaseDirectories;
 
 use crate::consts::*;
+
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
+pub enum Compositor {
+    Sway, // or i3
+    Niri,
+}
+
+impl Display for Compositor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Compositor::Sway => write!(f, "sway"),
+            Compositor::Niri => write!(f, "niri"),
+        }
+    }
+}
+
+impl FromStr for Compositor {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "sway" | "i3" => Ok(Compositor::Sway),
+            "niri" => Ok(Compositor::Niri),
+            _ => Err(anyhow::anyhow!("Unknown compositor: {s}")),
+        }
+    }
+}
+
+// TODO: use this in sway side
+pub fn save_tree(
+    base_dirs: BaseDirectories,
+    compositor: Compositor,
+    config_name: Option<String>,
+    tree: &Vec<Node>,
+) -> Result<()> {
+    let sub_dir = match compositor {
+        Compositor::Sway => "",
+        Compositor::Niri => "niri",
+    };
+    let file_path_str = &format!(
+        "{sub_dir}/{}.yaml",
+        config_name.unwrap_or("default".to_owned())
+    );
+    let file_path = &base_dirs.place_config_file(file_path_str).context(format!(
+        "failed to access config file path: {file_path_str}"
+    ))?;
+
+    let serialized_yaml = to_string(&tree).context("on to_string()")?;
+    fs::write(file_path, serialized_yaml)
+        .context(format!("on fs::write({})", file_path.display()))?;
+
+    Ok(())
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]

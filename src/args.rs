@@ -1,5 +1,7 @@
 use clap::{Parser, Subcommand};
 
+use crate::models::Compositor;
+
 /// Save your sway tree, and reload it. Provide a name if you wish!
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -10,6 +12,10 @@ pub struct Args {
     /// Name of your tree
     #[arg(long)]
     pub name: Option<String>,
+
+    /// Compositor to use
+    #[arg(long, default_value_t = Compositor::Sway)]
+    pub compositor: Compositor,
 
     /// Dry run
     #[arg(long, default_value_t = false)]
