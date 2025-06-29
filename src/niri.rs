@@ -265,7 +265,10 @@ impl Niri {
                 break;
             }
             if now.elapsed() > node.timeout.unwrap_or(MAX_WAIT_DURATION) {
-                bail!("Timed out waiting for app with id {} to spawn", app_id);
+                warn!(
+                    "timeout reached while waiting for app with id {} to spawn, current count: {after_count}",
+                    app_id
+                );
             }
             info!(
                 "waiting 100ms for app with id {} to spawn, current count: {after_count}",
