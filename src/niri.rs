@@ -16,7 +16,7 @@ pub struct Niri {
     dry_run: bool,
 }
 
-// TODO: make it a trait for sway
+// TODO: make it a trait?
 impl Niri {
     pub fn new(cfg: Config, dry_run: bool) -> Result<Self> {
         let socket = niri_ipc::socket::Socket::connect().context("on Socket::connect()")?;
@@ -25,36 +25,6 @@ impl Niri {
             cfg,
             dry_run,
         })
-    }
-
-    /// Spawns a command and waits for it to finish.
-    /// TODO: wait is not implemented yet, so it just spawns the command.
-    fn spawn_and_wait(&mut self, node: &Node) -> Result<()> {
-        let cmd = if let Some(desktop_file) = &node.desktop_entry {
-            debug!("\tspawning from desktop entry: {desktop_file}");
-            Some(format!(
-                "{} \"{}\"",
-                self.cfg.desktop_exec,
-                desktop_file.replace("\"", "\\\"")
-            ))
-        } else if let Some(exec) = &node.exec {
-            debug!("\tspawning from exec: {exec}");
-            Some(exec.replace("\"", "\\\""))
-        } else {
-            debug!("\tspawning from app_id: {:?}", node.app_id);
-            node.app_id.clone()
-        };
-
-        let Some(cmd) = cmd else {
-            bail!("cannot spawn application without app_id, desktop_entry or exec");
-        };
-
-        let _ = self
-            .send(niri_ipc::Request::Action(niri_ipc::Action::Spawn {
-                command: vec!["sh".to_string(), "-c".to_string(), cmd.to_string()],
-            }))
-            .context(format!("on spawn action with command: {cmd}"))?;
-        Ok(())
     }
 
     pub fn get_tree(&mut self) -> Result<Vec<Node>> {
@@ -212,6 +182,36 @@ impl Niri {
                 reference: niri_ipc::WorkspaceReferenceArg::Index(1),
             },
         ))?;
+        Ok(())
+    }
+
+    /// Spawns a command and waits for it to finish.
+    /// TODO: wait is not implemented yet, so it just spawns the command.
+    fn spawn_and_wait(&mut self, node: &Node) -> Result<()> {
+        let cmd = if let Some(desktop_file) = &node.desktop_entry {
+            debug!("\tspawning from desktop entry: {desktop_file}");
+            Some(format!(
+                "{} \"{}\"",
+                self.cfg.desktop_exec,
+                desktop_file.replace("\"", "\\\"")
+            ))
+        } else if let Some(exec) = &node.exec {
+            debug!("\tspawning from exec: {exec}");
+            Some(exec.replace("\"", "\\\""))
+        } else {
+            debug!("\tspawning from app_id: {:?}", node.app_id);
+            node.app_id.clone()
+        };
+
+        let Some(cmd) = cmd else {
+            bail!("cannot spawn application without app_id, desktop_entry or exec");
+        };
+
+        let _ = self
+            .send(niri_ipc::Request::Action(niri_ipc::Action::Spawn {
+                command: vec!["sh".to_string(), "-c".to_string(), cmd.to_string()],
+            }))
+            .context(format!("on spawn action with command: {cmd}"))?;
         Ok(())
     }
 
