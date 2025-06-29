@@ -6,11 +6,11 @@ mod niri;
 mod sway;
 mod util;
 
-use anyhow::{Context, Ok, Result, bail};
+use anyhow::{Context, Ok, Result};
 use args::{Args, Mode};
 use clap::Parser;
-use models::{Compositor, save_tree};
-use tracing::{error, level_filters::LevelFilter};
+use models::{Compositor, load_tree, save_tree};
+use tracing::{error, level_filters::LevelFilter, warn};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 use xdg::BaseDirectories;
@@ -34,6 +34,7 @@ fn run() -> Result<()> {
         "failed to access swaytreesave xdg directories: {app_name}"
     ))?;
 
+    // TODO: make sway branch reuse get_tree_path() function
     // TODO: make sway branch reuse save_tree() function
     if options.compositor == Compositor::Sway {
         let config_file = "config.yaml";
@@ -69,15 +70,23 @@ fn run() -> Result<()> {
     }
 
     // Niri branch
+    let tree_path = config::get_tree_path(base_dirs, options.compositor, options.name)?;
     let mut n = niri::Niri::new()?;
-    let tree = n.get_tree().context("on niri::Niri::get_tree()")?;
 
     match options.mode {
         Mode::Save => {
-            save_tree(base_dirs, Compositor::Niri, options.name, &tree).context("on save_tree()")
+            let tree = n.get_tree().context("on niri::Niri::get_tree()")?;
+            save_tree(&tree_path, &tree).context("on save_tree()")
         }
-        Mode::Load { workspace: _ } => {
-            bail!("Loading trees is not supported for Niri yet.");
+        Mode::Load { workspace } => {
+            if let Some(ws) = &workspace {
+                warn!(
+                    "loading a specific workspace is incompatible with Niri, ignoring it (trying to load {ws})"
+                );
+            }
+            n.clear().context("on n.clear()")?;
+            let tree = load_tree(&tree_path).context("on load_tree()")?;
+            n.load_tree(&tree).context("on n.load_tree()")
         }
     }
 }

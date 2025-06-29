@@ -1,9 +1,8 @@
-use std::{fmt::Display, fs, str::FromStr, time::Duration};
+use std::{fmt::Display, fs, path::Path, str::FromStr, time::Duration};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_yaml::to_string;
-use xdg::BaseDirectories;
 
 use crate::consts::*;
 
@@ -35,29 +34,20 @@ impl FromStr for Compositor {
 }
 
 // TODO: use this in sway side
-pub fn save_tree(
-    base_dirs: BaseDirectories,
-    compositor: Compositor,
-    config_name: Option<String>,
-    tree: &Vec<Node>,
-) -> Result<()> {
-    let sub_dir = match compositor {
-        Compositor::Sway => "",
-        Compositor::Niri => "niri",
-    };
-    let file_path_str = &format!(
-        "{sub_dir}/{}.yaml",
-        config_name.unwrap_or("default".to_owned())
-    );
-    let file_path = &base_dirs.place_config_file(file_path_str).context(format!(
-        "failed to access config file path: {file_path_str}"
-    ))?;
-
+pub fn save_tree(tree_path: &Path, tree: &Vec<Node>) -> Result<()> {
     let serialized_yaml = to_string(&tree).context("on to_string()")?;
-    fs::write(file_path, serialized_yaml)
-        .context(format!("on fs::write({})", file_path.display()))?;
+    fs::write(tree_path, serialized_yaml)
+        .context(format!("on fs::write({})", tree_path.display()))?;
 
     Ok(())
+}
+
+// TODO: use this in sway side
+pub fn load_tree(tree_path: &Path) -> Result<Vec<Node>> {
+    let file_content = fs::read_to_string(tree_path).context("on fs::read_to_string()")?;
+    let tree: Vec<Node> =
+        serde_yaml::from_str(&file_content).context("on serde_yaml::from_str()")?;
+    Ok(tree)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
@@ -72,6 +62,20 @@ pub enum NodeType {
     Dockarea, // i3-specific
     #[default]
     Unknown = 1000,
+}
+
+impl Display for NodeType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NodeType::Root => write!(f, "root"),
+            NodeType::Output => write!(f, "output"),
+            NodeType::Workspace => write!(f, "workspace"),
+            NodeType::Con => write!(f, "con"),
+            NodeType::FloatingCon => write!(f, "floating_con"),
+            NodeType::Dockarea => write!(f, "dockarea"),
+            NodeType::Unknown => write!(f, "unknown"),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]

@@ -3,7 +3,7 @@ use std::vec;
 // TODO: I do not think Niri expose the columns, so this is not possible to see how windows are arranged
 // TODO: same for columns widths then
 use anyhow::{Context, Result, anyhow, bail};
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::models::{Node, NodeLayout, NodeType};
 
@@ -91,5 +91,91 @@ impl Niri {
         }
 
         Ok(nodes)
+    }
+
+    /// Clears all current workspaces and closes all current windows.
+    pub fn clear(&mut self) -> Result<()> {
+        warn!("clearing all workspaces and windows -not supported yet-");
+        Ok(())
+    }
+
+    pub fn load_tree(&mut self, tree: &[Node]) -> Result<()> {
+        for (idx, node) in tree.iter().enumerate() {
+            if !matches!(node.node_type, NodeType::Root | NodeType::Workspace) {
+                warn!(
+                    "skipping: uncompatible node at idx={idx}, looking for Workspace: {}",
+                    node.node_type
+                );
+                continue;
+            }
+
+            let ref_workspace = niri_ipc::WorkspaceReferenceArg::Index((idx + 1) as u8);
+
+            // name the workspace if it has a name
+            if let Some(name) = &node.name {
+                debug!("setting workspace name: {name}");
+                let _ = self.send(niri_ipc::Request::Action(
+                    niri_ipc::Action::SetWorkspaceName {
+                        name: name.to_string(),
+                        workspace: Some(ref_workspace.clone()),
+                    },
+                ))?;
+            }
+
+            // move current view to the workspace
+            debug!("focusing workspace: {:?}", ref_workspace);
+            let _ = self.send(niri_ipc::Request::Action(
+                niri_ipc::Action::FocusWorkspace {
+                    reference: ref_workspace,
+                },
+            ))?;
+
+            // now it should be split containers, informations we do not have in Niri yet
+            for (idx, node) in node.nodes.iter().enumerate() {
+                if !matches!(
+                    node.node_type,
+                    NodeType::Con | NodeType::FloatingCon | NodeType::Unknown
+                ) {
+                    warn!(
+                        "skipping: uncompatible node at idx={idx}, looking for Con(tainer): {}",
+                        node.node_type
+                    );
+                    continue;
+                }
+
+                // spawn the applications (windows)
+                for (idx, node) in node.nodes.iter().enumerate() {
+                    if !matches!(
+                        node.node_type,
+                        NodeType::Con | NodeType::FloatingCon | NodeType::Unknown
+                    ) {
+                        warn!(
+                            "skipping: uncompatible node at idx={idx}, looking for Con(tainer): {}",
+                            node.node_type
+                        );
+                        continue;
+                    }
+
+                    debug!("spawning window: {:?}", node.app_id);
+                    warn!("we do not support spawning windows in Niri for now");
+                }
+            }
+
+            // go back to the first workspace
+            debug!("going back to focusing the first workspace");
+            let _ = self.send(niri_ipc::Request::Action(
+                niri_ipc::Action::FocusWorkspace {
+                    reference: niri_ipc::WorkspaceReferenceArg::Index(1),
+                },
+            ))?;
+        }
+        Ok(())
+    }
+
+    fn send(&mut self, request: niri_ipc::Request) -> Result<niri_ipc::Response> {
+        self.socket
+            .send(request)
+            .context("on socket.send()")?
+            .map_err(|e| anyhow!("on decoding Niri answer: {:?}", e))
     }
 }
