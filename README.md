@@ -11,9 +11,9 @@
 - Save and load multiple trees/layouts giving a name
 - Load specific workspace of specific tree
 - Supports multiple WM/compositors:
-  - Sway
-  - i3
-  - Niri
+  - [Sway](https://swaywm.org/)
+  - i3 _(not tested)_
+  - [Niri](https://github.com/YaLTeR/niri)
 
 ## Installation
 
