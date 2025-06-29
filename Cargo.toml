@@ -10,4 +10,5 @@ serde_yaml = "0.9"
 clap = { version = "4.5.37", features = ["derive"] }
 xdg = "2.5.2"
 humantime-serde = "1.1.1"
-
+niri-ipc = "=25.5.1"
+anyhow = "1.0.98"
