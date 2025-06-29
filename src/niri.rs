@@ -32,7 +32,7 @@ impl Niri {
         };
 
         for window in &windows {
-            println!("{:?}", window);
+            println!("{window:?}");
         }
 
         Ok(())
@@ -50,7 +50,7 @@ impl Niri {
         };
 
         for workspace in &workspaces {
-            println!("{:?}", workspace);
+            println!("{workspace:?}");
         }
 
         Ok(())

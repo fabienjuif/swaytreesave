@@ -37,7 +37,7 @@ pub fn save_tree(config_file_path: PathBuf, dry_run: bool) -> Result<()> {
     // TODO: sort by workspace name
 
     if dry_run {
-        println!("tree[{:?}]:\n{:?}", config_file_path, tree);
+        println!("tree[{config_file_path:?}]:\n{tree:?}");
         return Ok(());
     }
 
@@ -49,7 +49,7 @@ pub fn save_tree(config_file_path: PathBuf, dry_run: bool) -> Result<()> {
     ));
 
     //
-    println!("tree saved into: {:?}", config_file_path);
+    println!("tree saved into: {config_file_path:?}");
 
     Ok(())
 }
@@ -61,7 +61,7 @@ pub fn load_tree(
     no_kill: bool,
     workspace: Option<String>,
 ) -> Result<()> {
-    eprintln!("Loading tree from {:?}", config_file_path);
+    eprintln!("Loading tree from {config_file_path:?}");
 
     // loading tree from file
     let file_content = fs::read_to_string(&config_file_path).expect(stringify!(
@@ -133,7 +133,7 @@ fn parse_children(node: &swayipc::Node) -> Node {
         parent.exec = match extract_cmdline(pid) {
             Ok(cmd) => Some(cmd),
             Err(_) => {
-                eprintln!("Failed to extract command line for PID {}", pid);
+                eprintln!("Failed to extract command line for PID {pid}");
                 None
             }
         }
@@ -177,8 +177,8 @@ fn spawn_recursive(
 ) {
     if node.node_type == NodeType::Workspace {
         if let Some(name) = &node.name {
-            let cmd = format!("workspace {}", name);
-            println!("{:?}", cmd);
+            let cmd = format!("workspace {name}");
+            println!("{cmd:?}");
             if !dry_run {
                 connection
                     .run_command(cmd)
@@ -200,13 +200,11 @@ fn spawn_recursive(
         } else if let Some(exec) = &node.exec {
             Some(format!("exec \"{}\"", exec.replace("\"", "\\\"")))
         } else {
-            node.app_id
-                .as_ref()
-                .map(|app_id| format!("exec {}", app_id))
+            node.app_id.as_ref().map(|app_id| format!("exec {app_id}"))
         };
 
         if let Some(cmd) = cmd {
-            println!("\t{:?}", cmd);
+            println!("\t{cmd:?}");
             if !dry_run {
                 for i in 0..node.retry.unwrap_or(1) {
                     if i > 0 {
@@ -215,7 +213,7 @@ fn spawn_recursive(
                     match spawn_and_wait(connection, &cmd, &node.app_id, &node.timeout) {
                         Ok(_) => break,
                         Err(e) => {
-                            eprintln!("{}", e);
+                            eprintln!("{e}");
                         }
                     }
                 }
@@ -228,7 +226,7 @@ fn spawn_recursive(
         if index == 0 {
             if node.layout == NodeLayout::SplitH {
                 let cmd = "split h".to_string();
-                println!("\t{:?}", cmd);
+                println!("\t{cmd:?}");
 
                 if !dry_run {
                     connection
@@ -237,7 +235,7 @@ fn spawn_recursive(
                 }
             } else if node.layout == NodeLayout::SplitV {
                 let cmd = "split v".to_string();
-                println!("\t{:?}", cmd);
+                println!("\t{cmd:?}");
                 if !dry_run {
                     connection
                         .run_command(cmd)

@@ -1,7 +1,7 @@
 use std::fs;
 
 pub fn extract_cmdline(pid: &i32) -> Result<String, std::io::Error> {
-    let path = format!("/proc/{}/cmdline", pid);
+    let path = format!("/proc/{pid}/cmdline");
 
     let data = fs::read(&path)?;
     let joined = data
