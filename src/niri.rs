@@ -1,5 +1,6 @@
 use anyhow::Result;
 
+#[allow(dead_code)]
 pub fn test_niri() -> Result<()> {
     let mut n = Niri::new()?;
     n.print_workspaces()?;

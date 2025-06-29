@@ -11,12 +11,8 @@ use std::path::PathBuf;
 use anyhow::Result;
 use args::{Args, Mode};
 use clap::Parser;
-use niri::test_niri;
 
 fn main() -> Result<()> {
-    test_niri()?;
-    return Ok(());
-
     let options = Args::parse();
 
     let xdg_dirs = xdg::BaseDirectories::with_prefix("swaytreesave").unwrap();
