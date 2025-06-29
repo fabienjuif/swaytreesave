@@ -1,5 +1,6 @@
-use std::{fs, path::PathBuf};
+use std::{fs, path::Path};
 
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_yaml::to_string;
 
@@ -27,24 +28,24 @@ impl Default for Config {
 }
 
 impl Config {
-    pub fn touch_if_not_exists(path: &PathBuf) -> Result<(), std::io::Error> {
+    pub fn touch_if_not_exists(path: &Path) -> Result<()> {
         if !path.exists() {
             let config = Config::default();
-            config.save(path)
-        } else {
-            Ok(())
+            return config.save(path);
         }
+        Ok(())
     }
 
-    pub fn save(&self, path: &PathBuf) -> Result<(), std::io::Error> {
-        let serialized_yaml = to_string(self).expect("Failed to serialize config");
-        fs::write(path, serialized_yaml)
+    pub fn save(&self, path: &Path) -> Result<()> {
+        let serialized_yaml = to_string(self).context("on to_string()")?;
+        fs::write(path, serialized_yaml).context("on fs::write()")?;
+        Ok(())
     }
 
-    pub fn load(path: &PathBuf) -> Result<Self, std::io::Error> {
-        let file_content = fs::read_to_string(path)?;
+    pub fn load(path: &Path) -> Result<Self> {
+        let file_content = fs::read_to_string(path).context("on fs::read_to_string()")?;
         let config: Config =
-            serde_yaml::from_str(&file_content).expect("Failed to deserialize config");
+            serde_yaml::from_str(&file_content).context("on serde_yaml::from_str()")?;
         Ok(config)
     }
 }
