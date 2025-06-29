@@ -10,6 +10,10 @@
 - Retry customisation per item
 - Save and load multiple trees/layouts giving a name
 - Load specific workspace of specific tree
+- Supports multiple WM/compositors:
+  - Sway
+  - i3
+  - Niri
 
 ## Installation
 

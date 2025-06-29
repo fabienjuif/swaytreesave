@@ -31,7 +31,7 @@ fn run() -> Result<()> {
     let options = Args::parse();
 
     let base_dirs = xdg::BaseDirectories::with_prefix(app_name).context(format!(
-        "failed to access swaytreesave xdg directories: {app_name}"
+        "failed to access xdg directories: {app_name}"
     ))?;
 
     // TODO: make sway branch reuse get_tree_path() function
