@@ -3,12 +3,12 @@
 
 use std::{
     fs,
-    path::PathBuf,
+    path::Path,
     thread,
     time::{Duration, Instant},
 };
 
-use anyhow::Result;
+use anyhow::{Context, Result, bail};
 use serde_yaml::to_string;
 
 use crate::{
@@ -18,9 +18,11 @@ use crate::{
     util::extract_cmdline,
 };
 
-pub fn save_tree(config_file_path: PathBuf, dry_run: bool) -> Result<()> {
+pub fn save_tree(config_file_path: &Path, dry_run: bool) -> Result<()> {
     // build saveable tree
-    let sway_tree = swayipc::Connection::new()?.get_tree()?;
+    let sway_tree = swayipc::Connection::new()?
+        .get_tree()
+        .context("on Connection::new()?.get_tree()")?;
     let mut tree = vec![];
     for node in sway_tree.iter() {
         if node.node_type == swayipc::NodeType::Workspace {
@@ -42,11 +44,9 @@ pub fn save_tree(config_file_path: PathBuf, dry_run: bool) -> Result<()> {
     }
 
     // saving into given config file
-    let serialized_yaml = to_string(&tree).expect("Failed to serialize tree");
-    fs::write(&config_file_path, serialized_yaml).expect(stringify!(
-        "Failed to write to {}",
-        config_file_path.display()
-    ));
+    let serialized_yaml = to_string(&tree).context("on to_string()")?;
+    fs::write(config_file_path, serialized_yaml)
+        .context(format!("on fs::write({})", config_file_path.display()))?;
 
     //
     println!("tree saved into: {config_file_path:?}");
@@ -56,7 +56,7 @@ pub fn save_tree(config_file_path: PathBuf, dry_run: bool) -> Result<()> {
 
 pub fn load_tree(
     config: &config::Config,
-    config_file_path: PathBuf,
+    config_file_path: &Path,
     dry_run: bool,
     no_kill: bool,
     workspace: Option<String>,
@@ -64,11 +64,12 @@ pub fn load_tree(
     eprintln!("Loading tree from {config_file_path:?}");
 
     // loading tree from file
-    let file_content = fs::read_to_string(&config_file_path).expect(stringify!(
-        "Failed to read from {}",
+    let file_content = fs::read_to_string(config_file_path).context(format!(
+        "on fs::read_to_string({})",
         config_file_path.display()
-    ));
-    let tree: Vec<Node> = serde_yaml::from_str(&file_content).expect("Failed to deserialize tree");
+    ))?;
+    let tree: Vec<Node> =
+        serde_yaml::from_str(&file_content).context("on serde_yaml::from_str()")?;
 
     // cleaning everything (next time just diff windows if possible rather than starting from scratch)
     let mut connection = swayipc::Connection::new()?;
@@ -84,7 +85,7 @@ pub fn load_tree(
             if workspace.is_some() && node.name != workspace {
                 continue;
             }
-            kill_recursive(&mut connection, node, dry_run, no_kill);
+            kill_recursive(&mut connection, node, dry_run, no_kill)?;
         }
     }
 
@@ -105,7 +106,7 @@ pub fn load_tree(
             if workspace.is_some() && node.name != workspace {
                 continue;
             }
-            spawn_recursive(&mut connection, node, &config.desktop_exec, dry_run);
+            spawn_recursive(&mut connection, node, &config.desktop_exec, dry_run)?;
         }
     }
 
@@ -151,7 +152,7 @@ fn kill_recursive(
     node: &swayipc::Node,
     dry_run: bool,
     no_kill: bool,
-) {
+) -> Result<()> {
     if node.node_type == swayipc::NodeType::Con || node.node_type == swayipc::NodeType::FloatingCon
     {
         // TODO: count before/after to check if the app is really killed
@@ -160,13 +161,15 @@ fn kill_recursive(
         if !dry_run && !no_kill {
             connection
                 .run_command(cmd)
-                .expect(stringify!("Failed to kill node with id {}", node.id));
+                .context(format!("Failed to kill node with id {}", node.id))?;
         }
     }
 
     for child in node.nodes.iter() {
-        kill_recursive(connection, child, dry_run, no_kill);
+        kill_recursive(connection, child, dry_run, no_kill)?;
     }
+
+    Ok(())
 }
 
 fn spawn_recursive(
@@ -174,7 +177,7 @@ fn spawn_recursive(
     node: &Node,
     desktop_exec: &str,
     dry_run: bool,
-) {
+) -> Result<()> {
     if node.node_type == NodeType::Workspace {
         if let Some(name) = &node.name {
             let cmd = format!("workspace {name}");
@@ -182,7 +185,7 @@ fn spawn_recursive(
             if !dry_run {
                 connection
                     .run_command(cmd)
-                    .expect(stringify!("Failed to spawn workspace {}", name));
+                    .context(format!("Failed to switch to workspace {name}"))?;
             }
         }
     }
@@ -222,7 +225,7 @@ fn spawn_recursive(
     }
 
     for (index, child) in node.nodes.iter().enumerate() {
-        spawn_recursive(connection, child, desktop_exec, dry_run);
+        spawn_recursive(connection, child, desktop_exec, dry_run)?;
         if index == 0 {
             if node.layout == NodeLayout::SplitH {
                 let cmd = "split h".to_string();
@@ -231,7 +234,7 @@ fn spawn_recursive(
                 if !dry_run {
                     connection
                         .run_command(cmd)
-                        .expect(stringify!("Failed to split h"));
+                        .context("on run_command(split h)")?;
                 }
             } else if node.layout == NodeLayout::SplitV {
                 let cmd = "split v".to_string();
@@ -239,11 +242,13 @@ fn spawn_recursive(
                 if !dry_run {
                     connection
                         .run_command(cmd)
-                        .expect(stringify!("Failed to split v"));
+                        .context("on run_command(split v)")?;
                 }
             }
         }
     }
+
+    Ok(())
 }
 
 fn spawn_and_wait(
@@ -251,15 +256,15 @@ fn spawn_and_wait(
     cmd: &str,
     app_id: &Option<String>,
     timeout: &Option<Duration>,
-) -> swayipc::Fallible<()> {
+) -> Result<()> {
     let before = if let Some(app_id) = &app_id {
-        count_app_ids(connection, app_id).expect("Failed to count app ids")
+        count_app_ids(connection, app_id).context(format!("on count_app_ids({app_id})"))?
     } else {
         0
     };
     connection
         .run_command(cmd)
-        .expect(stringify!("Failed to spawn app {}", node.id));
+        .context(format!("on run_command:{cmd:?}"))?;
     if let Some(app_id) = &app_id {
         let now = Instant::now();
         while let Ok(after) = count_app_ids(connection, app_id) {
@@ -267,10 +272,7 @@ fn spawn_and_wait(
                 break;
             }
             if now.elapsed() > timeout.unwrap_or(MAX_WAIT_DURATION) {
-                return Err(swayipc::Error::Io(std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    "Timed out waiting for app to spawn",
-                )));
+                bail!("Timed out waiting for app with id {} to spawn", app_id);
             }
             eprintln!("sleep 100ms");
             thread::sleep(Duration::from_millis(100));
