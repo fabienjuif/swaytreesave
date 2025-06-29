@@ -10,6 +10,10 @@
 - Retry customisation per item
 - Save and load multiple trees/layouts giving a name
 - Load specific workspace of specific tree
+- Supports multiple WM/compositors:
+  - [Sway](https://swaywm.org/)
+  - i3 _(not tested)_
+  - [Niri](https://github.com/YaLTeR/niri)
 
 ## Installation
 
@@ -28,7 +32,7 @@ You can find a custom [template here.](https://github.com/fabienjuif/void-packag
 
 **swaytreesave --help**
 
-```bash
+```txt
 Usage: swaytreesave [OPTIONS] <COMMAND>
 
 Commands:
@@ -37,18 +41,17 @@ Commands:
   help  Print this message or the help of the given subcommand(s)
 
 Options:
-      --name <NAME>  Name of your tree
-      --dry-run      Dry run
-      --no-kill      No kill
-  -h, --help         Print help
-  -V, --version      Print version
+      --name <NAME>              Name of your tree
+      --compositor <COMPOSITOR>  Compositor to use [default: sway]
+      --dry-run                  Dry run
+      --no-kill                  No kill
+  -h, --help                     Print help
+  -V, --version                  Print version
 ```
 
 **swawytreesave load --help**
 
-```bash
-Load a sway tree
-
+```txt
 Usage: swaytreesave load [OPTIONS]
 
 Options:
