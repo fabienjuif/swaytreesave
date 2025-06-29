@@ -33,22 +33,22 @@ fn run() -> Result<()> {
     let base_dirs = xdg::BaseDirectories::with_prefix(app_name)
         .context(format!("failed to access xdg directories: {app_name}"))?;
 
+    let config_file = "config.yaml";
+    let config_file_path = base_dirs
+        .place_config_file(config_file)
+        .context(format!("failed to access config file path: {config_file}"))?;
+    config::Config::touch_if_not_exists(&config_file_path).context(format!(
+        "failed to create config file: {}",
+        config_file_path.display()
+    ))?;
+    let config = config::Config::load(&config_file_path).context(format!(
+        "failed to load config file: {}",
+        config_file_path.display()
+    ))?;
+
     // TODO: make sway branch reuse get_tree_path() function
     // TODO: make sway branch reuse save_tree() function
     if options.compositor == Compositor::Sway {
-        let config_file = "config.yaml";
-        let config_file_path = base_dirs
-            .place_config_file(config_file)
-            .context(format!("failed to access config file path: {config_file}"))?;
-        config::Config::touch_if_not_exists(&config_file_path).context(format!(
-            "failed to create config file: {}",
-            config_file_path.display()
-        ))?;
-        let config = config::Config::load(&config_file_path).context(format!(
-            "failed to load config file: {}",
-            config_file_path.display()
-        ))?;
-
         let tree_file = options.name.unwrap_or("default".to_owned()) + ".yaml";
         let tree_file_path = base_dirs
             .place_config_file(&tree_file)
@@ -70,7 +70,7 @@ fn run() -> Result<()> {
 
     // Niri branch
     let tree_path = config::get_tree_path(base_dirs, options.compositor, options.name)?;
-    let mut n = niri::Niri::new()?;
+    let mut n = niri::Niri::new(config, options.dry_run)?;
 
     match options.mode {
         Mode::Save => {
