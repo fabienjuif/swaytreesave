@@ -49,7 +49,7 @@ Options:
   -V, --version                  Print version
 ```
 
-**swawytreesave load --help**
+**swaytreesave load --help**
 
 ```txt
 Usage: swaytreesave load [OPTIONS]
@@ -64,13 +64,13 @@ Options:
 Saves the current tree to `$HOME/.config/swaytreesave/default.yaml`:
 
 ```bash
-swawytreesave save
+swaytreesave save
 ```
 
 Loads the default tree back:
 
 ```bash
-swawytreesave load
+swaytreesave load
 ```
 
 ### Sway config example
