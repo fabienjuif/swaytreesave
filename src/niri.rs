@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     thread,
     time::{Duration, Instant},
     vec,
@@ -43,25 +44,6 @@ impl Niri {
         let niri_ipc::Response::Workspaces(workspaces) = reply else {
             return Err(anyhow!("Unexpected response type from Niri"));
         };
-        let mut workspaces = workspaces;
-        workspaces.sort_by_key(|w| w.idx);
-
-        let mut nodes = Vec::new();
-        for (idx, workspace) in workspaces.into_iter().enumerate() {
-            debug!("workspace: {workspace:?}");
-            let node = Node {
-                name: Some(workspace.name.unwrap_or(idx.to_string())),
-                node_type: crate::models::NodeType::Workspace,
-                // niri does not provide layout, so we default to SplitH
-                nodes: vec![Node {
-                    node_type: NodeType::Con,
-                    layout: NodeLayout::SplitH,
-                    ..Default::default()
-                }],
-                ..Default::default()
-            };
-            nodes.push(node);
-        }
 
         // get windows and map them to workspaces
         let reply = self
@@ -74,38 +56,7 @@ impl Niri {
             return Err(anyhow!("unexpected response type from Niri"));
         };
 
-        for window in windows {
-            debug!("window: {window:?}");
-            let Some(workspace_id) = window.workspace_id else {
-                continue;
-            };
-            let workspace_idx = (workspace_id - 1) as usize;
-
-            if workspace_idx >= nodes.len() {
-                bail!(
-                    "workspace index {} out of bounds for nodes length {}",
-                    workspace_idx,
-                    nodes.len()
-                );
-            }
-
-            let node = Node {
-                node_type: NodeType::Con,
-                app_id: window.app_id,
-                ..Default::default()
-            };
-
-            // niri does not provide layout, so we default to the first found Con(tainer)
-            if nodes[workspace_idx].nodes.is_empty() {
-                bail!(
-                    "workspace {} has no nodes, cannot determine layout",
-                    workspace_idx
-                );
-            }
-            nodes[workspace_idx].nodes[0].nodes.push(node);
-        }
-
-        Ok(nodes)
+        build_tree(workspaces, windows)
     }
 
     /// Clears all current workspaces and closes all current windows.
@@ -314,5 +265,151 @@ impl Niri {
             .send(request)
             .context("on socket.send()")?
             .map_err(|e| anyhow!("on decoding Niri answer: {:?}", e))
+    }
+}
+
+/// Builds the workspace/window tree from raw niri replies.
+///
+/// `Window::workspace_id` is the workspace's *unique persistent id* (`Workspace::id`),
+/// not its on-monitor position (`Workspace::idx`). Those ids are not contiguous and do
+/// not start at 1 — they keep growing as workspaces are created/destroyed during a
+/// session (common with named workspaces). So we map each window to its workspace by
+/// looking up its id, never by arithmetic on the id.
+fn build_tree(
+    mut workspaces: Vec<niri_ipc::Workspace>,
+    windows: Vec<niri_ipc::Window>,
+) -> Result<Vec<Node>> {
+    workspaces.sort_by_key(|w| w.idx);
+
+    let mut nodes = Vec::with_capacity(workspaces.len());
+    // workspace id -> index in `nodes`
+    let mut id_to_idx = HashMap::with_capacity(workspaces.len());
+    for (idx, workspace) in workspaces.into_iter().enumerate() {
+        debug!("workspace: {workspace:?}");
+        id_to_idx.insert(workspace.id, idx);
+        let node = Node {
+            name: Some(workspace.name.unwrap_or(idx.to_string())),
+            node_type: NodeType::Workspace,
+            // niri does not provide layout, so we default to SplitH
+            nodes: vec![Node {
+                node_type: NodeType::Con,
+                layout: NodeLayout::SplitH,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        nodes.push(node);
+    }
+
+    for window in windows {
+        debug!("window: {window:?}");
+        let Some(workspace_id) = window.workspace_id else {
+            continue;
+        };
+        let Some(&workspace_idx) = id_to_idx.get(&workspace_id) else {
+            // The workspace may have been destroyed between the Workspaces and Windows
+            // replies, or otherwise not be in the list. Skip rather than abort the save.
+            warn!(
+                "window {} references unknown workspace id {workspace_id}, skipping",
+                window.id
+            );
+            continue;
+        };
+
+        let node = Node {
+            node_type: NodeType::Con,
+            app_id: window.app_id,
+            ..Default::default()
+        };
+
+        // niri does not provide layout, so we default to the first found Con(tainer).
+        // `nodes[workspace_idx].nodes[0]` always exists: we pushed exactly one Con above.
+        nodes[workspace_idx].nodes[0].nodes.push(node);
+    }
+
+    Ok(nodes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ws(id: u64, idx: u8, name: Option<&str>) -> niri_ipc::Workspace {
+        niri_ipc::Workspace {
+            id,
+            idx,
+            name: name.map(str::to_string),
+            output: Some("eDP-1".to_string()),
+            is_urgent: false,
+            is_active: false,
+            is_focused: false,
+            active_window_id: None,
+        }
+    }
+
+    fn win(id: u64, app_id: &str, workspace_id: Option<u64>) -> niri_ipc::Window {
+        niri_ipc::Window {
+            id,
+            title: None,
+            app_id: Some(app_id.to_string()),
+            pid: None,
+            workspace_id,
+            is_focused: false,
+            is_floating: false,
+            is_urgent: false,
+        }
+    }
+
+    /// Regression: when workspaces are created/destroyed during a session, niri's
+    /// workspace ids become non-contiguous and outgrow the workspace count. Windows
+    /// must be matched by `Workspace::id`, not by `id - 1` used as a vec index (which
+    /// bailed with "workspace index N out of bounds for nodes length M").
+    #[test]
+    fn maps_windows_by_workspace_id_not_position() {
+        // 3 workspaces with ids {2, 5, 9} — earlier ones were closed this session.
+        let workspaces = vec![
+            ws(5, 2, Some("web")),
+            ws(2, 1, Some("term")),
+            ws(9, 3, Some("chat")),
+        ];
+        let windows = vec![
+            win(100, "firefox", Some(5)),
+            win(101, "alacritty", Some(2)),
+            win(102, "discord", Some(9)),
+        ];
+
+        let tree = build_tree(workspaces, windows).expect("build_tree should not fail");
+
+        // ordered by idx: term(idx 1), web(idx 2), chat(idx 3)
+        assert_eq!(tree.len(), 3);
+        assert_eq!(tree[0].name.as_deref(), Some("term"));
+        assert_eq!(tree[1].name.as_deref(), Some("web"));
+        assert_eq!(tree[2].name.as_deref(), Some("chat"));
+
+        // each window landed in the Con of the workspace its id points to
+        assert_eq!(
+            tree[0].nodes[0].nodes[0].app_id.as_deref(),
+            Some("alacritty")
+        );
+        assert_eq!(tree[1].nodes[0].nodes[0].app_id.as_deref(), Some("firefox"));
+        assert_eq!(tree[2].nodes[0].nodes[0].app_id.as_deref(), Some("discord"));
+    }
+
+    /// A window pointing at a workspace that is not in the list (e.g. destroyed
+    /// between the two IPC replies) must be skipped, not abort the whole save.
+    #[test]
+    fn skips_window_with_unknown_workspace_id() {
+        let workspaces = vec![ws(1, 1, Some("main"))];
+        let windows = vec![
+            win(100, "firefox", Some(1)),
+            win(101, "ghost", Some(42)), // workspace 42 no longer exists
+        ];
+
+        let tree = build_tree(workspaces, windows).expect("build_tree should not fail");
+
+        assert_eq!(tree.len(), 1);
+        let wins = &tree[0].nodes[0].nodes;
+        assert_eq!(wins.len(), 1);
+        assert_eq!(wins[0].app_id.as_deref(), Some("firefox"));
     }
 }
