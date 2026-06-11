@@ -178,15 +178,15 @@ fn spawn_recursive(
     desktop_exec: &str,
     dry_run: bool,
 ) -> Result<()> {
-    if node.node_type == NodeType::Workspace {
-        if let Some(name) = &node.name {
-            let cmd = format!("workspace {name}");
-            println!("{cmd:?}");
-            if !dry_run {
-                connection
-                    .run_command(cmd)
-                    .context(format!("Failed to switch to workspace {name}"))?;
-            }
+    if node.node_type == NodeType::Workspace
+        && let Some(name) = &node.name
+    {
+        let cmd = format!("workspace {name}");
+        println!("{cmd:?}");
+        if !dry_run {
+            connection
+                .run_command(cmd)
+                .context(format!("Failed to switch to workspace {name}"))?;
         }
     }
 
