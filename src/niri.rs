@@ -235,10 +235,10 @@ impl Niri {
         let windows = self.fetch_windows().context("on fetch_windows()")?;
 
         for window in windows {
-            if let Some(id) = &window.app_id {
-                if id == app_id {
-                    count += 1;
-                }
+            if let Some(id) = &window.app_id
+                && id == app_id
+            {
+                count += 1;
             }
         }
 
