@@ -5,7 +5,8 @@ fix:
 
 # make release VERSION=x.y.z
 # Bumps the package version (single source of truth for the reported --version),
-# refreshes Cargo.lock, commits, and tags vX.Y.Z so the tag and manifest can't drift.
+# refreshes Cargo.lock, commits, tags vX.Y.Z so the tag and manifest can't drift,
+# pushes both, and opens a GitHub release with auto-generated notes.
 release:
 ifndef VERSION
 	$(error VERSION is required, e.g. `make release VERSION=0.5.0`)
@@ -16,4 +17,7 @@ endif
 	@git add Cargo.toml Cargo.lock
 	@git commit -m ":bookmark: release v$(VERSION)"
 	@git tag "v$(VERSION)"
-	@echo "tagged v$(VERSION) — push with: git push && git push origin v$(VERSION)"
+	@git push
+	@git push origin "v$(VERSION)"
+	@gh release create "v$(VERSION)" --title "v$(VERSION)" --generate-notes
+	@echo "released v$(VERSION)"
